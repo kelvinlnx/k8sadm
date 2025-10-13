@@ -1,0 +1,17 @@
+{
+    "kind": "Pod",
+    "apiVersion": "v1",
+    "metadata": {
+        "name": "web"
+    },
+    "spec": {
+        "containers": [
+            {
+                "name": "web",
+                "image": "nginx"
+            }
+        ],
+        "restartPolicy": "Always",
+        "dnsPolicy": "ClusterFirst"
+    }
+}

@@ -1,0 +1,77 @@
+Perform the tasks below as student user on your master node:
+
+Exploring API Calls
+===================
+1. Use strace to see what kubectl is doing. Notice the several openat functions referencing the local .kube/cache directory.
+strace kubectl get endpoints
+
+2. Go to the .kube/cache/discovery directory and explore the files there.
+cd /home/student/.kube/cache/discovery/
+cd master_6443
+ls
+tree
+
+3. Display the apps/v1/serverresources.json. Take note on the shortnames.
+cat apps/v1/serverresources.json | jq
+
+4. You may also check these resources using the kubectl command. Use -o json|yaml to see more details.
+kubectl api-resources
+
+RESTful API Access
+==================
+There are several authentication methods, we will be using "Bearer token" here, and deploy local proxy for application-level access to the Kubernetes API.
+
+1. Generate token for the default serviceaccount
+export token=$(kubectl create token default)
+
+2. List the apis group. we will use insecure access to avoide using a cert
+curl https://master:6443/apis --header "Authorization: Bearer $token" -k
+
+3. Now try again but try using API v1. This will result in failure with a forbidden message. This shows that the default serviceaccount doesn't have RBAC authorization to list all namespaces.
+curl https://master:6443/api/v1/namespaces --header "Authorization: Bearer $token" -k
+
+Using Proxy
+===========
+Another way to interact with Kubernetes API is via a proxy which can be done from a node or pod sidecar.
+
+1. Learn how to use kubectl proxy
+kubectl proxy -h
+
+2. Run the command to proxy all of the Kubernetes API in the background
+kubectl proxy --api-prefix=/ &
+[1] 5020
+Starting to serve on 127.0.0.1:8001
+
+3. Test the api by using the proxy.
+curl http://127.0.0.1:8001/api/
+curl http://127.0.0.1:8001/api/v1/namespaces
+
+What failed previously works now. This is used to troubleshoot problems by narrowing down the problem to authentication and authorization issues.
+
+4. Stop the proxy
+kill %1
+
+Using TLS Access
+================
+1. Display the current config using kubectl. The --raw option display hidden contents. The contents are exactly the same as your .kube/config file.
+kubectl config view
+
+2. Extract the three certificates and get the API URL
+grep auth .kube/config | awk '{print $2}' | base64 -d > ca.pem
+grep client-cert .kube/config | awk '{print $2}' | base64 -d > cert.pem
+grep key .kube/config | awk '{print $2}' | base64 -d > key.pem
+kubectl config view | grep server
+
+3. Use a secure connection to retrieve the list of pods from the cluster.
+curl --cert cert.pem --key key.pem --cacert ca.pem master:6443 https://master:6443/api/v1/pods
+
+4. Create a pod in the default namespace by using the 3s-web.json file.
+curl --cert cert.pem --key key.pem --cacert ca.pem master:6443 https://master:6443/api/v1/namespaces/default/pods -XPOST -H'Content-Type: application/json' -d@3s-web.json
+
+5. Check if the pod is created.
+kubectl get pods
+
+6. Cleanup.
+kubectl delete po/web
+kubectl get po
+

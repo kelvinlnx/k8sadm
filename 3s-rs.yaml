@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: super-rs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      superlabel: best
+  template:
+    metadata:
+      labels:
+        superlabel: test
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+

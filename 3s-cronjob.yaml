@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: ConJob
+metadata:
+  name: repeat
+spec:
+  jobTemplate:
+    metadata:
+      name: repeat
+    spec:
+    template:
+      spec:
+        containers:
+        - command:
+          - sleep
+          - "5"
+          image: busybox
+          name: repeat
+        restartPolicy: OnFailure
+  schedule: '*/2 * * * *'
+

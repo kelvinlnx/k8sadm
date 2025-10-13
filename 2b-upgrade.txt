@@ -1,0 +1,69 @@
+Upgrading Kubernetes Cluster
+============================
+1. Update the repository version reference
+sed -i 's/33/34/g' /etc/apt/sources.list.d/kubernetes.list
+
+apt update
+
+2. View available versions of kubeadm
+apt-cache madison kubeadm
+
+3. Upgrade kubeadm
+apt-mark unhold kubeadm
+apt install -y kubeadm=1.34.1-*
+apt-mark hold kubeadm
+
+4. Verify kubeadm version
+kubeadm version
+
+5. Evict pods from node. Daemonsets such as cilium need to be on every node.
+kubectl drain master --ignore-daemonsets
+
+6. Plan the upgrade. Read through the output
+kubeadm upgrade plan
+
+7. Apply the upgrade. Answer y when prompted.
+kubeadm upgrade apply v1.34.1
+
+8. Check the status of nodes. Why is the version still the same? Why is SchedulingDisabled?
+kubectl get node
+
+9. Upgrade kubelet and kubectl
+apt-mark unhold kubelet kubectl
+apt install -y kubelet=1.34.1-* kubectl=1.34.1-*
+apt-mark hold kubelet kubectl
+
+10. Restart the daemon
+systemctl daemon-reload
+systemctl restart kubelet
+
+11. Check status. Notice that worker is still on the old version
+kubectl get nodes
+
+12. Re-enable scheduling for master node
+kubectl uncordon master
+
+13. Confirm master node status. It should be Ready.
+kubectl get nodes
+
+14. Repeat steps 1 to 6, for all nodes (including other control plane nodes), followed by
+    "kubeadm upgrade node", then 9 to 14. solution as below:
+
+sed -i 's/33/34/g' /etc/apt/sources.list.d/kubernetes.list
+apt update
+apt-cache madison kubeadm
+apt-mark unhold kubeadm
+apt install -y kubeadm=1.34.1-*
+apt-mark hold kubeadm
+kubeadm version
+kubectl drain worker --ignore-daemonsets
+kubeadm upgrade node
+kubectl get node
+apt-mark unhold kubelet kubectl
+apt install -y kubelet=1.34.1-* kubectl=1.34.1-*
+apt-mark hold kubelet kubectl
+systemctl daemon-reload
+systemctl restart kubelet
+kubectl get nodes
+kubectl uncordon worker
+kubectl get nodes

@@ -1,0 +1,136 @@
+Step 0: Switch to root
+======================
+sudo -i
+
+Step 1: Set hostname
+====================
+hostnamectl hostname master
+
+cat /etc/master
+192.168.0.8	master
+
+Step 2: Update & Upgrade packages
+=================================
+apt update && apt upgrade -y
+
+Step 3: Install prerequisite packages
+=====================================
+apt install -y apt-transport-https software-properties-common ca-certificates socat vim curl gnupg2 lsb-release wget bash-completion tree
+
+Step 4: Disable swap
+====================
+swapoff -a
+sed -i '/^[^#].* swap .*/s/^/#/' /etc/fstab
+
+Step 5: Auto load modules
+=========================
+cat << EOF | tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+modprobe overlay
+modprobe br_netfilter
+
+Step 6: Configure kernel parameters
+===================================
+cat << EOF | tee /etc/sysctl.d/kubernetes.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sysctl --system
+
+Step 7: Add kubernetes and containerd gpg keys
+==============================================
+curl -fsSL https://pkgs.k8s.io/core:/stable:/$K8S_GPG_VER/deb/Release.key \
+        | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+Step 7: Add kubernetes and containerd repos
+===========================================
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+        https://pkgs.k8s.io/core:/stable:/$K8S_GPG_VER/deb/ /"
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+
+Step 8: Install and configure containerd
+========================================
+apt update && apt install containerd.io -y
+containerd config default | tee /etc/containerd/config.toml
+
+sed -e 's/SystemdCgroup = false/SystemdCgroup = true/g' -i /etc/containerd/config.toml
+sed -e 's/pause:3.8/pause:3.10/' -i /etc/containerd/config.toml
+
+systemctl restart containerd
+systemctl enable containerd
+
+Step 9: Install kubeadm kubectl and kubelet
+===========================================
+apt update
+apt install -y kubeadm=1.33.1-* kubectl=1.33.1-* kubelet=1.33.1-*
+
+apt-mark hold kubeadm kubectl kubelet
+
+Step 9: Fix containerd runtime endpoint
+=======================================
+crictl config \
+        --set runtime-endpoint=unix:///run/containerd/containerd.sock \
+        --set image-endpoint=unix:///run/containerd/containerd.sock
+
+
+======================================================
+Step 10 to Step 12 Only to be performed on master node
+======================================================
+Step 10: Install kubernetes
+===========================
+kubeadm init \
+                --kubernetes-version=1.33.1 \
+                --pod-network-cidr=10.0.0.0/16 \
+                --upload-certs \
+                --node-name=master \
+                --control-plane-endpoint=master:6443
+
+Step 11: Configure kubectl for user
+===================================
+mkdir -p /home/student/.kube
+cp /etc/kubernetes/admin.conf /home/student/.kube/config
+chown -R student:student /home/student/.kube
+
+mkdir -p /etc/bash_completion.d
+kubectl completion bash > /etc/bash_completion.d/kubectl
+
+Step 12: Configure CNI - Cilium
+===============================
+snap install helm --classic
+
+helm repo add cilium https://helm.cilium.io/
+helm repo update
+
+helm template cilium cilium/cilium --version 1.16.1 --namespace kube-system > cilium.yaml
+
+KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f cilium.yaml
+
+Step 13: Verify
+===============
+kubectl get node
+kubectl describe node master
+kubectl describe node | grep -i taint
+
+kubectl taint node --all node-role.kubernetes.io/control-plane-
+
+ip a
+
+=======================================================
+Joining cluster - Perform the following on worker nodes
+=======================================================
+1. Run Step 1 to Step 9
+2. Make sure master node hostname is resolvable on worker.
+   Make sure worker node name is also resolvable on master.
+   E.g. Add entries into /etc/hosts if names are not resolvable by DNS.
+3. On master run the command: kubeadm token create --print-join-command
+4. Copy the result from the kubeadm command and run it on the worker node.

@@ -1,0 +1,112 @@
+There are 2 ways to create a kubernetes object
+	a. Ad-hoc using kubectl create
+	b. Declarative approach using a file.
+		kubectl apply|create -f FILE
+
+Namespaces
+==========
+1. Create two namespace: testing and dummy
+kubectl create namespace testing
+kubectl create ns dummy
+
+2. List all the namespaces
+kubectl get ns
+
+3. Find out which is the current namespace for the user.
+kubectl config get-contexts
+
+4. Change it to testing namespace
+kubectl config set-contexts --current --namespace testing
+kubectl config get-contexts
+
+5. Try listing pods from kube-system namespace. Why can't you see the pods in your namespace?
+kubectl get po
+kubectl get po -n kube-system
+
+6. Delete the dummy namespace.
+kubectl delete ns dummy
+kubectl get ns
+
+Pods
+====
+1. Create a pod using the nginx image.
+kubectl run web --image=nginx
+
+2. Display the pod.
+kubectl get po -o wide
+kubectl get po -o custom-colum=NAME:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP
+NAME	NODE	IP
+web 	worker	10.20.30.40
+
+3. Try to visit the pods webpage from the other node.
+curl 10.20.30.40
+
+4. Try using the worker node
+curl worker
+
+5. Quiz: Why did it work for step 3 but not 4? Discuss with instructor.
+
+6. Delete the pod
+kubectl delete po web
+
+Jobs
+====
+We will be creating the job using the declarative approach.
+1. Create a job that will end in a few seconds. make sure the conntainer name is lazy.
+kubectl create job short --image=busybox --dry-run=client -o yaml -- sleep 3 > short.yaml
+vi short.yaml
+...
+spec:
+  template:
+    spec:
+      containers:
+      - command:
+        - sleep
+        - "3"
+        image: busybox
+        name: lazy		# Change this line
+...
+kubectl create -f short.yaml
+
+2. Check the status of the job and pod
+kubectl describe job short
+kubectl get job,po
+
+3. Set the job to run 5 times and 2 in parallel each time. Make sure the job does not take 15 seconds to finish.
+vi short.yaml
+...
+kind: Job
+  name: short
+spec:
+  completions: 5		# Add this line
+  parallelism: 2		# Add this line
+  activeDealineSeconds: 15	# Add this line
+  template:
+    spec:
+...
+
+4. Open another terminal and monitor live events.
+kubectl get events -w
+
+4. Back in the first terminal, recreate the job.
+kubectl delete job short
+kubectl apply -f short.yaml
+
+5. Monitor the events in the second terminal and type the following commands in the first terminal
+kubectl get job,po
+
+6. Clean up. Delete the job and exit the live event monitoring.
+kubectl delete job short
+Ctrl + C	# exit the kubectl get events -w
+
+CronJobs
+========
+1. Create a cronjob using the 3s-cronjob.yaml file. Correct any errors encountered in the file.
+kubectl apply -f 3s-cronjob.yaml
+
+2. Monitor the job. The job will only run after every 2 minutes.
+kubectl describe cronjob repeat
+kubectl get cj,job,po 
+
+3. Clean up. Delete the CronJob.
+kubectl delete cj repeat
