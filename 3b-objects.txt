@@ -16,7 +16,7 @@ kubectl get ns
 kubectl config get-contexts
 
 4. Change it to testing namespace
-kubectl config set-contexts --current --namespace testing
+kubectl config set-context --current --namespace testing
 kubectl config get-contexts
 
 5. Try listing pods from kube-system namespace. Why can't you see the pods in your namespace?
