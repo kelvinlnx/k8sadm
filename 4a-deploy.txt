@@ -1,0 +1,182 @@
+Perform this Lab using student user on master node.
+
+Deployments
+===========
+1. Create a deployment named web, using the nginx image.
+kubectl create deploy nginx --image=nginx -o yaml --dry-run=client > deploy-web.yaml
+kubectl create -f deploy-web.yaml
+
+2. Display the resources created by the deployment.
+kubectl get deploy,rs,po
+
+3. Try deleting the pod and replicaset. What happened?
+kubectl delete po we<TAB>
+kubectl get po
+kubectl delete rs we<TAB>
+kubectl get rs
+
+4. Delete the deploy
+kubectl delete deploy web
+kubectl get deploy,rs,po
+
+TIP: To create a resource definition file for an existing deployment, remove the creationTimestamp, resourceVersion and uid lines. Also remove all lines including and after status:.
+	kubectl get deploy abc -o yaml > somefile.yaml
+
+ReplicaSets
+===========
+1. Create the super-rs ReplicaSet using the 3s-rs.yaml file.
+kubectl apply -f 3s-rs.yaml
+
+2. Wait for the 2 pods to come up.
+kubectl get rs,po
+
+3. Edit 1 of the pod and change the label value for superlabel to dummy
+kubectl edit po super-rs-<UUID>
+...
+metadata:
+  label:
+    superlabel: dummy
+...
+Save and exit
+
+4. Check how many super-rs-* pods you have now
+kubectl get rs,po
+
+5. What happened? and Why?
+
+6. Create the super-rs ReplicaSet again and clean up the stray super-rs-* pod
+kubectl apply -f 3s-rs.yaml
+kubectl delete po -l superlabel=dummy
+kubectl get rs,po
+
+7. Scale the replicas down to 1.
+kubectl scale rs/super-rs --replicas=1
+kubectl get rs,po
+
+8. When deleting any parent resource, the child gets removed as well. What if we wish to retain that resource for troubleshooting or managed by another Deployment/ReplicaSet?
+kubectl delete rs super-rs --cascade=orphan
+kubectl get rs,po
+
+9. Clean up. Delete the remainder super-rs pods
+kubectl delete po -l superlabel=best
+
+Services
+========
+There are 3 methods to create a service:
+	1. Expose a deploy/dc, rs/rc, or a pod
+	2. Using "kubectl create service"
+	3. Using a service resource definition file "kubectl create -f service.yaml"
+
+1. Re-create the deployment from the deploy-web.yaml file
+kubectl create -f deploy-web.yaml
+
+2. Try to expose the deployment. This will fail. Why?
+kubectl expose -h
+kubectl expose deploy/web
+
+3. Use kubeadm explain to help you understand the structure of a deployment.
+cat deploy-web.yaml
+kubectl explain deploy.spec.containers
+kubectl explain deploy.spec.containers.ports
+
+vim deploy-web.yaml
+...
+spec:
+  template:
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:				# add this line to the file
+        - containerPort: 80		# add this line to the file
+...
+
+4. Apply your changes. The deployment will rollout a new rs which will rollout a new pod.
+kubectl create -f deploy-web.yaml	# This will fail. object names must be uniq
+kubectl apply -f deploy-web.yaml	# you can also use kubectl replace
+
+kubectl get deploy,rs,po
+
+5. Try exposing the deployment now
+kubectl expose deploy web
+
+6. Display the service
+kubectl get svc 
+kubectl get svc nginx
+kubectl get ep nginx
+
+7. Set the deployment web to:
+	a) Scale replicas to 2
+	b) use quay.io/kelvinlai/myphp:port8080 image
+	c) port 8080 for the container
+   Tip:
+     - Pay attention to see if a new rs is created in every change (a-c).
+     - before and after each of the operation, use kubectl get deploy,rs,po to check
+     - in b and c, how was the pod created? use kubectl get events -w to monitor.
+kubectl get deploy,rs,po
+kubectl scale deploy web --replicas 2
+kubectl get deploy,rs,po,svc,ep -o wide
+kubectl set image deploy/web nginx=quay.io/kelvinlai/myphp:port8080
+kubectl edit deploy/web		# change the port to 8080
+
+8. Try accessing the website using both the Pod IP and the Service IP 
+curl <POD_IP>:8080		# try with both pod's IP
+curl <SERVICE_IP>:80		# do this a few times
+
+Note: Reason that the query working is because this is done from inside the cluster. This also explains why we should use the service ip instead of pod ip when referencing an application.
+
+9. Try accessing those IP addresses using your desktop browser. This will fail. Why?
+
+10. Scale the deployment back to 1 to save resources.
+kubectl scale deploy/web --replicas 1
+
+11. How does a application pod refer to the database pod? Test this out using a job.
+Tips. use dns &/ environment (printenv/env)
+
+12. Exposing Deployment as NodePort Service and LoadBalancer Type.
+kubectl expose deploy/web --name web-np --type NodePort
+kubectl expose deploy/web --name web-lb --type LoadBalancer
+kubectl get svc -o wide
+kubectl get ep -o wide
+Note: The LoadBalancer will remain in "Pending" state unless you have a solution like MetalLB, kube-vip or Cloud provider integration.
+
+13. Now browse to your cloud load balancer ip using your machines browser. Use the port number displayed by your loadbalancer service. curl ifconfig.io might give you your public ip but firewall and routing might need to be configured.
+e.g. master:54321		# assuming the kubectl get svc web-lb shows port 54321
+
+14. Extra: try using ss/netstat to see if you can find any services listening to the above port (e.g. 54321)
+sudo ss -nltp
+The instructor will explain why.
+
+15. Clean up. Delete the web-lb and web-np
+kubectl delete svc web-lb web-np
+
+Managing Deployment Strategy
+============================
+1. Display the deployment revisions
+kubectl rollout history deploy/web
+
+2. Display specific revision information
+kubectl rollout history deploy/web --revision=2
+kubectl rollout history deploy/web --revision=3
+
+3. Make changes and adding annotations.
+kubectl set image deploy/web nginx=nginx --record
+
+Warning: The --record option has been deprecated. When used to set image as above, and the image doesn't exist, the command will still annotate the changes which gives a false impression that there were changes. The recommended alternative is to manually set the kubernetes.io/change-cause annotation using kubectl annotate. 
+
+4. Check the changes
+kubectl describe po web<TAB> |grep Image:
+
+5. Revert changes
+kubectl rollout undo deploy/web
+
+6. Change Deployment Strategy to Recreate, scale replicas to 3, trigger a new rollout, monitor how pods are created.
+Tips:
+...
+  strategy:
+    rollingUpdate:		# delete this line
+      maxSurge: 25%		# delete this line
+      maxUnavailable: 25%	# delete this line
+    type: RollingUpdate		# Change this to type: Recreate
+...
+
