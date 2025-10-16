@@ -1,0 +1,31 @@
+Peristent Storage
+=================
+1. Prepare master to share storage
+sudo apt install -y nfs-kernel-server
+sudo mkdir /opt/share
+sudo chmod 1777 /opt/share
+echo 'Hello World' | sudo tee /opt/share/welcome.txt
+echo '/opt/share *(rw,sync,no_root_squash,subtree_check)' | sudo tee -a /etc/exports
+sudo exportfs -ra
+sudo apt install -y nfs-common
+showmount -e master
+sudo mount master:/opt/share /mnt
+ls /mnt
+umount /mnt
+
+2. Create the PersistentVolume (PV)
+kubectl apply -f 4s-pv.yaml
+kubectl get pv
+
+3. Create a PersistentVolumeClaim (PVC) in your project
+kubectl create -f 4s-pvc.yaml
+kubectl get pvc
+kubectl get pv
+
+4. Update the deployment
+kubectl apply -f 4s-web.yaml
+
+5. Check the storage
+kubectl get svc
+curl SERVICE-IP:8080
+

@@ -1,0 +1,174 @@
+Helm
+====
+A Helm Chart is like a "package" of templates for Kubernetes applications.
+Chart Components:
+my-app-chart/
+├── Chart.yaml          # Metadata (name, version, description)
+├── values.yaml         # Default configuration values
+├── templates/          # Kubernetes manifest templates
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+└── charts/             # Sub-charts/dependencies
+
+
+1. Download helm. All the releases can be found in https://github.com/helm/helm/releases
+wget https://get.helm.sh/helm-v3.19.0-linux-arm64.tar.gz
+tar -xvf helm-v3.19.0-linux-arm64.tar.gz
+sudo cp linux-amd64/helm /usr/local/bin/helm
+
+2. A helm Chart is a collection of files to deploy an application. You can browse for the available charts in https://artifacthub.io/packages/search. Let's search in the helm hub for ingress.
+helm search hub ingress
+
+3. We will be using a simple nginx ingress controller. The official NGINX ingress URL is https://kubernetes.github.io/ingress-nginx
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo list
+
+4. Update the helm repo. This will download the latest charts.
+helm repo update
+
+If using Cloud Services:
+	5. Download and edit the values.yaml file. The default configuration provided uses a Deployment. We will configure an ingress controller on every node to handle traffic.
+	helm fetch ingress-nginx/ingress-nginx --untar
+	cd ingress-nginx
+	vi values.yaml
+	kind: DaemonSet		# change from Deployment to DaemonSet
+	
+	6. Install the controller using the chart from current directory.
+	helm install myingress .
+	
+	7. Wait for the ingress controller to come up before moving to the next step.
+If using Local VM:
+5. List charts that have been downloaded for repo ingress-nginx
+helm search repo ingress-nginx/
+helm search repo nginx		# search for nginx related charts
+
+6. Show detailed information for a specific chart. Use helm show chart|values|all repo/chart
+helm show chart ingress-nginx/ingress-nginx
+helm show values ingress-nginx/ingress-nginx
+helm show all ingress-nginx/ingress-nginx
+
+7. Install the chart by using a file or ad-hoc.
+cat <<EOF > nginx-hostnet.yaml
+controller:
+  hostNetwork: true       # Bind directly to host ports
+  hostPort:
+    enabled: true         # Open ports on the host
+  kind: DaemonSet        # Ensures one pod per node
+  service:
+    enabled: false        # Disable NodePort/LoadBalancer services
+  ingressClassResource:
+    enabled: true
+    name: nginx
+    default: true
+  ingressClass: nginx
+  watchIngressWithoutClass: false  # Only watch Ingresses with class: nginx
+
+  publishService:
+    enabled: false        # Disable publishing a Service
+  extraArgs:
+    publish-status-address: "0.0.0.0"  # Allow external status checks
+EOF
+
+helm upgrade -i ingress-nginx ingress-nginx/ingress-nginx \
+	--namespace ingress-nginx \
+	--create-namespace \
+	-f nginx-hostnet.yaml
+
+OR
+	helm upgrade -i ingress-nginx ingres-nginx/ingress-nginx \
+		--namespace ingress-nginx \
+		--create-namespace \
+		--set controller.hostNetwork=true \
+		--set controller.hostPort.enabled=true \
+		--set controller.king=DaemonSet \
+		--set controller.service.enabled=false ...
+
+8. Check if you have any ingress in all namespace
+kubeclt get ingress --all-namespaces
+
+9. Create ingress for your web service (port 80) in the testing namespace.
+kubectl create ingress -h
+kubectl create ingress simple --class=nginx --rule="web.example.net/=web:80"
+kubectl get ingress
+
+10. Test your ingress.
+curl -H "Host: web.example.net" http://master
+
+
+Kustomize
+=========
+Kustomize is a configuration management tool built into kubectl that lets you customize Kubernetes YAML files — without needing to use templating languages (like Helm does).
+
+Basic Structure:
+my-app/
+├── base/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── kustomization.yaml
+└── overlays/
+    ├── dev/
+    │   └── kustomization.yaml
+    └── prod/
+        └── kustomization.yaml
+
+1. Create a base kustomization file and the resource files for your web application.
+cd
+mkdir -p web/{base,overlays/{dev,prod}}
+tree web
+cp deploy-web.yaml web/base
+kubectl expose -f deploy-web.yaml --dry-run=client -o yaml > web/base/service.yaml
+cat << EOF > web/base/kustomization.yaml
+resources:
+  - deployment.yaml
+  - service.yaml
+EOF
+
+2. Create the development kustomization files.
+cat << EOF >  web/overlays/dev/kustomization.yaml
+resources:
+  - ../../base
+
+namePrefix: dev-
+labels:
+- includeSelectos: true
+  pairs:
+    environment: dev
+
+patches:
+  - target:
+      kind: Deployment
+      name: web
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+EOF
+
+3. Populate the production directory
+cat << EOF >  web/overlays/prod/kustomization.yaml
+resources:
+  - ../../base
+
+patches:
+  - prod-deploy.yaml
+EOF
+
+sed 's#image: nginx#image: quay.io/kelvinlai/myphp:port8080#' deploy-web.yaml > web/overlays/prod/prod-deploy.yaml
+
+4. Create a dummy namespace and apply your kustomize file
+kubectl create ns dummy
+kubectl -n dummy apply -k web/overlays/dev
+kubectl -n dummy get all
+
+5. Try the production now.
+kubectl -n dummy apply -k web/overlays/prod
+
+6. This lab is intended to have the dev and prod create different names. In real life, we might not be using prefix, therefore the applications are upgraded in place. 
+
+7. Clean up.
+kubectl delete -k web/overlays/prod
+kubectl delete -k web/overlays/dev
+kubectl delete ns dummy
+
+

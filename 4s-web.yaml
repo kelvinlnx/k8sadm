@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: web
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - image: quay.io/kelvinlai/myphp:port8080
+        name: website
+        ports:
+        - containerPort: 8080
+          volumeMounts:
+          - name: projDataVol
+            mountPath: /opt/data
+      volumes:
+      - name: projDataVol
+        persistentVolumeClaim:
+          claimname: pvc-store 

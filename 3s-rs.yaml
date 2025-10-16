@@ -10,7 +10,7 @@ spec:
   template:
     metadata:
       labels:
-        superlabel: test
+        superlabel: best
     spec:
       containers:
       - image: nginx

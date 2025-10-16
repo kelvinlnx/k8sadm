@@ -1,3 +1,6 @@
+#
+# Correct the error in this file and create a cronjob named repeat
+#
 apiVersion: batch/v1
 kind: ConJob
 metadata:
