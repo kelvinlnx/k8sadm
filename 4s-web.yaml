@@ -20,10 +20,10 @@ spec:
         name: website
         ports:
         - containerPort: 8080
-          volumeMounts:
-          - name: projDataVol
-            mountPath: /opt/data
+        volumeMounts:
+        - name: proj-vol
+          mountPath: /opt/data
       volumes:
-      - name: projDataVol
+      - name: proj-vol
         persistentVolumeClaim:
-          claimname: pvc-store 
+          claimName: pvc-store 

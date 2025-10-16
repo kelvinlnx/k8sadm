@@ -12,5 +12,5 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   nfs:
     path: /opt/share
-    server: master
+    server: MASTER_IP
     readOnly: false
