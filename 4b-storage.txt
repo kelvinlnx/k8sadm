@@ -11,7 +11,7 @@ sudo apt install -y nfs-common
 showmount -e master
 sudo mount master:/opt/share /mnt
 ls /mnt
-umount /mnt
+sudo umount /mnt
 
 2. Create the PersistentVolume (PV)
 kubectl apply -f 4s-pv.yaml
