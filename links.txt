@@ -1,0 +1,13 @@
+Candidate Handbook
+==================
+https://docs.linuxfoundation.org/tc-docs/certification/lf-handbook2?__hstc=60185074.1153ef02bba573c103251fae82269e86.1760591483352.1760591483352.1760591483352.1&__hssc=60185074.4.1760591483352&__hsfp=3353172635&ajs_aid=df88cce5-c954-4b7e-b8cc-381592752484
+
+CKA Curriculum Overview
+=======================
+https://github.com/cncf/curriculum/blob/master/CKA_Curriculum_v1.33.pdf
+
+
+Exam Tips (Resources Allowed)
+==============================
+https://docs.linuxfoundation.org/tc-docs/certification/tips-cka-and-ckad?__hstc=60185074.1153ef02bba573c103251fae82269e86.1760591483352.1760591483352.1760591483352.1&__hssc=60185074.4.1760591483352&__hsfp=3353172635&ajs_aid=df88cce5-c954-4b7e-b8cc-381592752484
+
