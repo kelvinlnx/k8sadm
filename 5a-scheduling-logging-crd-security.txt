@@ -22,7 +22,7 @@ kubectl delete po web<TAB>
 kubectl get po -o wide
 
 6. Add a tolerations to deploy web so that it can be scheduled on the tainted master node.
-kubectl patch deploy/web -p '{"spec": {"template": {"spec": {"tolerations": [{"key: "dedicated", "operator": "Equal", "value": "special", "effect": "NoSchedule"}]}}}}'
+kubectl patch deploy/web -p '{"spec": {"template": {"spec": {"tolerations": [{"key": "dedicated", "operator": "Equal", "value": "special", "effect": "NoSchedule"}]}}}}'
 
 The above is the same as editing the deployment web and adding the following tolerations section to the template section:
 spec:
