@@ -1,0 +1,216 @@
+Scheduling
+==========
+1. Add the label disk=ssd to master and disk=sata to worker.
+kubectl label node/master disk=ssd
+kubectl label node/worker disk=sata
+kubectl get nodes --show-labels
+
+2. Make sure all web pods get created in the node that has the label disk=ssd.
+kubectl patch deploy/web -p '{"spec": {"template": {"spec": {"nodeSelector": {"disk": "ssd"}}}}}'
+
+3. Scale the deployment to 2 pods. Normally the scheduler will schedule the pods to run on different nodes if resources are available.
+kubectl scale deploy/web --replicas 2
+
+4. Check where the pods are created. Scale the replicas back to 1.
+kubectl get po -o wide
+kubectl scale deploy/web --replicas 1
+
+5. Add the taint dedicated=special:NoSchedule to master. Delete the web pod. The new pod won't be created because master node is unscheduleable. When using taint you can't use the node/master syntax.
+kubectl taint node master dedicated=special:NoSchedule
+kubectl describe nodes | grep -i taint
+kubectl delete po web<TAB>
+kubectl get po -o wide
+
+6. Add a tolerations to deploy web so that it can be scheduled on the tainted master node.
+kubectl patch deploy/web -p '{"spec": {"template": {"spec": {"tolerations": [{"key: "dedicated", "operator": "Equal", "value": "special", "effect": "NoSchedule"}]}}}}'
+
+The above is the same as editing the deployment web and adding the following tolerations section to the template section:
+spec:
+  template:
+    spec:
+      tolerations:
+      - key: dedicated
+        operator: Equal
+        value: special
+        effect: NoSchedule
+
+7. Check the pods. The web pod should now be running in master
+kubectl get po -o wide
+
+8. Clean up.
+kubectl taint node master dedicated-
+      
+Extra:
+	Taint Effects
+	NoSchedule - Hard Scheduling Restriction
+	  - New Pods: Will NOT be scheduled unless they tolerate the taint
+	  - Existing Pods: Remain running unaffected
+	  - Example Use: Dedicated nodes for specific workloads
+
+	PreferNoSchedule - Soft Scheduling Preference
+	  - New Pods: Scheduler will try to avoid, but may schedule if no other nodes available
+	  - Existing Pods: Remain running unaffected
+	  - Example Use: Gentle workload separation
+
+	NoExecute - Immediate Eviction + Scheduling Restriction
+	  - New Pods: Will NOT be scheduled unless they tolerate the taint
+	  - Existing Pods: Evicted immediately (or after tolerationSeconds if specified)
+	  - Example Use: Node maintenance, emergency situations
+
+Logging
+=======
+Tips: Cluster logging is not yet available in Kubernetes. You can use external loggers like http://fluentd.org
+
+1. Check the logs for kube-apiserver pod on master
+kubectl -n kube-system logs kube-apiserver-master
+
+2. The pods have the local filesystem mounted in the pods as volumes. So you can also check the logs locally on the master node.
+ls /var/log/containers/kube-apiserver-master_kube-system_<TAB>
+
+You can use less to check the content of the logs file.
+
+Metrics
+=======
+You could use the integrated Metric Server or install the more common monitoring service Prometheus. In the following example, we will be using the Metric Server.
+
+1. Install the Metric Server
+kubectl create -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl -n kube-system get pods
+
+2. The default certificate is x509 self-signed and not trusted.
+kubectl -n kube-system edit deployment metrics-server
+...
+spec:
+  containers:
+    - args:
+    - --cert-dir=/tmp
+    - --secure-port=4443
+    - --kubelet-insecure-tls           #<-- Add this line
+    - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname #<--May be needed
+    image: k8s.gcr.io/metrics-server/metrics-server:v0.3.7
+...
+
+3. Check and make sure the metric server is running.
+kubectl -n kube-system get po
+
+4. Check for metrics. You might need to wait for a minute before metrics are populated.
+kubectl top pod --all-namespaces
+kubectl top nodes
+
+Dashboard
+=========
+1. Add and update helm repo
+helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+helm repo list
+helm repo update
+
+2. Install the dashboard
+helm upgrade --install kubernetes-dashboard \
+     kubernetes-dashboard/kubernetes-dashboard \
+     --create-namespace --namespace kubernetes-dashboard
+
+3. Verify
+kubectl get all -n kubernetes-dashboard
+
+4. Create a serviceaccount dashboard-admin to manage cluster
+kubectl create sa dashboard-admin -n kubernetes-dashboard
+
+5. Assign the cluster-admin ClusterRole to dashboard-admin
+kubectl create clusterrolebinding dashboard-admin \
+	--clusterrole=cluster-admin \
+	--serviceaccount=kubernetes-dashboard:dashboard-admin
+
+6. Create the ingress rule.
+echo <<EOF > dashboard-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubernetes-dashboard
+  namespace: kubernetes-dashboard
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"  # Dashboard uses HTTPS
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"    # Bypass Nginx SSL termination
+    nginx.ingress.kubernetes.io/rewrite-target: /          # Rewrite path if needed
+spec:
+  ingressClassName: nginx   # Matches the IngressClass you configured
+  rules:
+  - host: dash.master  # Replace with your domain (or use IP if no DNS)
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kubernetes-dashboard-kong-proxy  # Dashboard Service name
+            port:
+              number: 443               # Dashboard Service port (HTTPS)
+EOF
+
+kubectl apply -f dashboard-ingress.yaml
+kubectl get ingress -n kubernetes-dashboard
+
+7. Create a token for the dashboard-admin.
+kubectl -n kube-system create token dashboard-admin
+
+8. Open C:\Windows\System32\drivers\etc\hosts using notepad as Administrator and add the IP address of master node and the name dash.master
+
+9. Browse to dash.master
+
+EXTRA
+=====
+kubernetes manifests are located in /etc/kubernetes/manifests
+
+1. Generate a private key and Certificate Signing Requests (CSR) for student.
+openssl genrsa -out student.key 2048
+openssl req -new -key student.key -out student.csr -subj "/CN=student/O=development"
+
+2. Use the csr to generate a x509 self-signed cert. Set expiry to 30 days.
+sudo openssl x509 -req -in student.csr \
+	-CA /etc/kubernetes/pki/ca.crt \
+	-CAkey /etc/kubernetes/pki/ca.key \
+	-CAcreateserial \
+	-out student.crt -days 30
+
+3. Update the credentials in the config.
+kubectl config set-credentials student \
+	--client-certificate=/home/student/student.crt
+	--client-key=/home/student/student.key
+
+4. Create a context now.
+kubectl config set-context student-context \
+	--cluster=kubernetes \
+	--namespace=testing \
+	--user=student
+
+5. Try to view pods in the testing namespace. Why is there an error? Remember RBAC?
+kubectl --context=student-context get po -n testing
+
+6. Create a Role
+kubectl create role developer --verb=* --resource=deployments,replicasets,pods -n testing
+
+7. Create a RoleBinding
+kubectl create rolebinding developer --role=developer --user=student -n testing
+
+8. Try to view pods again using student-context
+kubectl --context student-context get po -n testing
+
+Custom Resource Definition (CRD)
+================================
+1. Show all CRDs
+kubectl get crd --all-namespaces
+
+2. create a shortcut for crontab crd.
+kubectl apply -f 5s-crd.yaml
+kubectl get crd
+kubectl describe crd crontab
+
+3. Create a new crontab object
+kubectl create -f 5s-crontab.yaml
+
+4. Check
+kubectl get CronTab
+kubectl get ct
+kubectl describe ct
+
+5. Clean up. Deleting the crd should also delete all endpoints and objects using it.
+kubectl delete -f 5s-crd.yaml
